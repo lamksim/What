@@ -1,0 +1,50 @@
+// A tiny Android app that opens the Pigeon Chat website full screen in Chrome
+// (a "Trusted Web Activity"). Google sign-in works because it runs in Chrome.
+plugins { id 'com.android.application' }
+
+// Set by the GitHub build: e.g. lamksim.github.io and /pigeon-chat/
+def webHost = project.findProperty('webHost') ?: 'example.github.io'
+def webPath = project.findProperty('webPath') ?: '/pigeon-chat/'
+def ver = (project.findProperty('versionCode') ?: '1') as int
+
+android {
+    namespace 'app.pigeonchat'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.pigeonchat'
+        minSdk 21
+        targetSdk 35
+        versionCode ver
+        versionName "1.0.${ver}"
+        resValue 'string', 'launchUrl', "https://${webHost}${webPath}"
+        manifestPlaceholders = [hostName: webHost]
+        resValue 'string', 'asset_statements',
+            "[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://${webHost}\" } }]"
+    }
+    def ks = System.getenv('ANDROID_KEYSTORE_FILE')
+    signingConfigs {
+        if (ks) {
+            release {
+                storeFile file(ks)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'pigeon'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Without a signing key, use the debug key so the APK still installs.
+            signingConfig ks ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pigeon Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Pigeon">
+  <script src="config.js"></script>
+</head>
+<body>
+  <!-- Sign-in / setup screen -->
+  <section id="login" class="screen">
+    <div class="card">
+      <div class="logo">🕊️</div>
+      <h1>Pigeon Chat</h1>
+      <p class="muted">Simple 1:1 chat. Every message and photo is saved in your own Google Drive.</p>
+
+      <div id="client-setup" hidden>
+        <label for="client-id">Google OAuth Client ID</label>
+        <input id="client-id" placeholder="1234-abc.apps.googleusercontent.com">
+        <p class="hint">See SETUP.md for how to create one. It is saved in this browser only.</p>
+      </div>
+
+      <button id="btn-signin" class="primary">Sign in with Google</button>
+      <button id="btn-demo" class="link">Try the demo (no Google account needed)</button>
+      <p id="login-error" class="error" hidden></p>
+    </div>
+  </section>
+
+  <!-- Main app -->
+  <section id="app" class="screen" hidden>
+    <aside id="sidebar">
+      <header class="bar">
+        <div class="me">
+          <div class="avatar" id="me-avatar"></div>
+          <div>
+            <div id="me-name" class="name"></div>
+            <div id="me-email" class="muted small"></div>
+          </div>
+        </div>
+        <button id="btn-new" class="icon" title="New chat">＋</button>
+      </header>
+      <ul id="conv-list"></ul>
+      <p id="conv-empty" class="muted center pad">No chats yet. Tap ＋ to start one.</p>
+      <footer class="bar small">
+        <button id="btn-signout" class="link">Sign out</button>
+      </footer>
+    </aside>
+
+    <main id="chat">
+      <div id="chat-empty" class="center muted">Pick a chat, or start a new one.</div>
+      <div id="chat-view" hidden>
+        <header class="bar">
+          <button id="btn-back" class="icon back" title="Back">‹</button>
+          <div class="avatar" id="peer-avatar"></div>
+          <div>
+            <div id="peer-name" class="name"></div>
+            <div class="muted small">Saved in Google Drive</div>
+          </div>
+        </header>
+        <div id="messages"></div>
+        <form id="composer">
+          <label class="icon" title="Send a photo">
+            📷<input id="photo-input" type="file" accept="image/*" hidden>
+          </label>
+          <input id="text-input" autocomplete="off" maxlength="4000" placeholder="Type a message">
+          <button class="primary send" title="Send">➤</button>
+        </form>
+      </div>
+    </main>
+  </section>
+
+  <!-- New chat dialog -->
+  <dialog id="new-dialog">
+    <form method="dialog" id="new-form">
+      <h2>New chat</h2>
+      <p class="muted small">Enter your friend's Google (Gmail) address. They will get access to a shared Drive folder for this chat.</p>
+      <input id="new-email" type="email" required placeholder="friend@gmail.com">
+      <div class="row">
+        <button value="cancel" formnovalidate class="link">Cancel</button>
+        <button value="ok" class="primary">Start chat</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" hidden></div>
+
+  <script src="drive.js"></script>
+  <script src="demo.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  </script>
+</body>
+</html>
