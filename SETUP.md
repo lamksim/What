@@ -29,7 +29,7 @@ Open <http://localhost:8080/?demo>. In demo mode nothing is saved and a pretend 
 6. **APIs & Services > Credentials > Create credentials > OAuth client ID**:
    - Application type: **Web application**.
    - **Authorized JavaScript origins**: add `https://lamksim.github.io` (the online app) and `http://localhost:8080` (for testing on a computer).
-   - **Authorized redirect URIs**: add `https://lamksim.github.io/pigeon-chat/` and `http://localhost:8080/` (with the slash at the end).
+   - **Authorized redirect URIs**: add `https://lamksim.github.io/What/` and `http://localhost:8080/` (with the slash at the end).
    - Click **Create** and copy the **Client ID** (it ends in `.apps.googleusercontent.com`).
 7. Send me the Client ID (it is not a secret) and I'll put it in `config.js`, so your family never has to type it.
 
