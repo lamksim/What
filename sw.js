@@ -1,7 +1,7 @@
 // Caches the app's own files so it opens fast and works like an installed app.
-// Google sign-in and Drive requests always go to the network.
-const CACHE = 'pigeon-v2';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'drive.js', 'demo.js', 'config.js',
+// Chat traffic (WebSocket relays) never goes through this cache.
+const CACHE = 'pigeon-v3';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'net.js', 'demo.js', 'vendor/nostr-tools-2.10.4.js', 'config.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES))));

@@ -1,0 +1,25 @@
+# Checks the public chat relays still accept Pigeon Chat messages.
+# Runs when the chat code changes, weekly, and on demand.
+name: Check chat relays
+
+on:
+  push:
+    branches: [main]
+    paths: ['net.js', 'config.js', 'tools/relay-check.mjs', '.github/workflows/relay-check.yml']
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm i --no-save nostr-tools@2.10.4
+      - run: node tools/relay-check.mjs

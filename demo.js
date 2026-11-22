@@ -1,67 +1,67 @@
-// In-memory stand-in for Google Drive, so the app can be tried without any
-// Google setup. Nothing is saved; a pretend friend replies to you.
+// In-memory stand-in for the chat servers, so the app can be tried without
+// sending anything anywhere. Nothing is saved; pretend family members reply.
 
 const DemoBackend = (() => {
-  const me = { email: 'you@example.com', name: 'You (demo)' };
+  let me = null;
   const convs = [];
   const msgs = {}; // convId -> [msg]
   let n = 0;
   const id = () => `demo-${++n}`;
   const now = () => new Date(Date.now() + n).toISOString(); // unique, increasing
+  const MAI = 'demo-mai', TOM = 'demo-tom';
 
-  const replies = [
-    'Nice! 😄', 'Got it.', 'Haha, love that.', 'Sounds good to me.',
-    'Where are you now?', 'Let me check and get back to you.', 'Cool photo!',
-  ];
+  const replies = ['Nice! 😄', 'Got it.', 'Haha, love that.', 'Sounds good to me.', 'Where are you now?', 'Let me check and get back to you.'];
 
   function add(convId, msg) {
     const m = { id: id(), time: now(), text: '', ...msg };
     msgs[convId].push(m);
-    const c = convs.find((x) => x.id === convId);
-    c.updated = m.time;
     return m;
   }
 
   function friendReplies(convId, toPhoto) {
-    const c = convs.find((x) => x.id === convId);
     setTimeout(() => add(convId, {
-      kind: 'text', from: c.peerEmail,
-      text: toPhoto ? 'Cool photo!' : replies[Math.floor(Math.random() * (replies.length - 1))],
+      kind: 'text', from: MAI, fromName: 'Mai',
+      text: toPhoto ? 'Cool photo!' : replies[Math.floor(Math.random() * replies.length)],
     }), 1500);
   }
 
-  function seed() {
-    const c = { id: id(), peerEmail: 'mai@example.com', updated: now() };
+  function newConv(name) {
+    const c = { id: id(), name, code: 'DEMO-' + String(n).padStart(4, '0') + '-ABCD-EFGH' };
     convs.push(c); msgs[c.id] = [];
-    add(c.id, { kind: 'text', from: c.peerEmail, text: 'Hey! Is this the new chat app?' });
-    add(c.id, { kind: 'text', from: me.email, text: 'Yes, and every message goes into Google Drive.' });
-    add(c.id, { kind: 'text', from: c.peerEmail, text: 'So I can see them in my Drive too? Neat 👍' });
-    const d = { id: id(), peerEmail: 'tom@example.com', updated: now() };
-    convs.push(d); msgs[d.id] = [];
-    add(d.id, { kind: 'text', from: d.peerEmail, text: 'Lunch tomorrow?' });
+    return c;
+  }
+
+  function seed() {
+    const fam = newConv('Family');
+    add(fam.id, { kind: 'text', from: MAI, fromName: 'Mai', text: 'Hey! Is this the new chat app?' });
+    add(fam.id, { kind: 'text', from: me.id, fromName: me.name, text: 'Yes! No accounts needed, just the invite code.' });
+    add(fam.id, { kind: 'text', from: TOM, fromName: 'Tom', text: 'Works on my phone too 👍' });
+    const t = newConv('Tom');
+    add(t.id, { kind: 'text', from: TOM, fromName: 'Tom', text: 'Lunch tomorrow?' });
   }
 
   return {
     name: 'demo',
-    async signIn() { if (!convs.length) seed(); return me; },
+    newCode: () => 'DEMO-CODE-0000-0000',
+    normCode: (c) => c,
+    savedName: () => '',
+    async signIn(name) { me = { id: 'demo-me', name: name || 'You' }; if (!convs.length) seed(); return me; },
     signOut() {},
-    async listConversations() { return [...convs].sort((a, b) => b.updated.localeCompare(a.updated)); },
-    async createConversation(peerEmail) {
-      peerEmail = peerEmail.trim().toLowerCase();
-      let c = convs.find((x) => x.peerEmail === peerEmail);
-      if (!c) { c = { id: id(), peerEmail, updated: now() }; convs.push(c); msgs[c.id] = []; }
-      return c;
+    async listConversations() {
+      return convs.map((c) => ({ ...c, updated: (msgs[c.id].at(-1) || {}).time || '' }))
+        .sort((a, b) => b.updated.localeCompare(a.updated));
     },
-    async listMessages(convId, since) {
-      return msgs[convId].filter((m) => !since || m.time >= since);
-    },
+    async createConversation(name) { return newConv(name || 'New chat'); },
+    async joinConversation(code, name) { return newConv(name || 'Joined chat'); },
+    async leaveConversation(cid) { const i = convs.findIndex((c) => c.id === cid); if (i >= 0) convs.splice(i, 1); },
+    async listMessages(convId, since) { return (msgs[convId] || []).filter((m) => !since || m.time >= since); },
     async sendText(convId, text) {
-      const m = add(convId, { kind: 'text', from: me.email, text });
+      const m = add(convId, { kind: 'text', from: me.id, fromName: me.name, text });
       friendReplies(convId, false);
       return m;
     },
     async sendPhoto(convId, file) {
-      const m = add(convId, { kind: 'photo', from: me.email, url: URL.createObjectURL(file) });
+      const m = add(convId, { kind: 'photo', from: me.id, fromName: me.name, url: URL.createObjectURL(file) });
       friendReplies(convId, true);
       return m;
     },

@@ -1,7 +1,7 @@
 {
   "name": "Pigeon Chat",
   "short_name": "Pigeon",
-  "description": "Simple chat that saves messages and photos in Google Drive",
+  "description": "Simple private family chat with photos",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

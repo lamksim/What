@@ -1,24 +1,19 @@
-// UI logic. Works with either DriveBackend (real) or DemoBackend (try-out).
+// UI logic. Works with either NetBackend (real) or DemoBackend (try-out).
 
 (() => {
   const $ = (id) => document.getElementById(id);
   const cfg = window.CHAT_CONFIG || {};
-  const POLL_MS = (cfg.pollSeconds || 4) * 1000;
+  const POLL_MS = (cfg.pollSeconds || 1) * 1000;
 
   let backend = null;
   let me = null;
   let convs = [];
   let current = null;          // current conversation
   let shown = new Set();       // message ids already rendered
-  let lastTime = null;         // createdTime of newest rendered message
+  let lastTime = null;         // time of newest rendered message
   let pollTimer = null, convTimer = null;
 
   // ---------- helpers ----------
-  const store = {
-    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
-  };
-
   function toast(text, isError) {
     const t = $('toast');
     t.textContent = text;
@@ -28,76 +23,70 @@
     toast.timer = setTimeout(() => (t.hidden = true), 4000);
   }
 
-  const displayName = (email) => (email || '?').split('@')[0];
-
-  function avatar(el, email) {
+  function avatar(el, name, seed) {
     let h = 0;
-    for (const ch of email || '') h = (h * 31 + ch.charCodeAt(0)) % 360;
-    el.textContent = displayName(email).charAt(0).toUpperCase();
+    for (const ch of seed || name || '') h = (h * 31 + ch.charCodeAt(0)) % 360;
+    el.textContent = (name || '?').trim().charAt(0).toUpperCase();
     el.style.background = `hsl(${h} 55% 48%)`;
   }
 
   function fmtTime(iso) {
     const d = new Date(iso);
     const today = new Date().toDateString() === d.toDateString();
-    return today
-      ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-        d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return today ? t : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + t;
   }
 
-  // ---------- sign in ----------
+  // Invite links look like  https://.../What/#join=ABCD-EFGH-JKLM-NPQR&name=Family
+  function readInviteFromUrl() {
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (!h.has('join')) return null;
+    history.replaceState(null, '', location.pathname + location.search);
+    return { code: h.get('join'), name: h.get('name') || '' };
+  }
+  let pendingInvite = readInviteFromUrl();
+
+  // ---------- start ----------
   function showLogin() {
     $('login').hidden = false;
     $('app').hidden = true;
-    const savedId = cfg.clientId || store.get('pigeon.clientId') || '';
-    $('client-setup').hidden = !!cfg.clientId;
-    $('client-id').value = savedId;
+    $('my-name').value = NetBackend.savedName();
+    $('my-name').focus();
   }
 
-  async function start(b, clientId) {
+  async function start(b, name) {
     $('login-error').hidden = true;
     $('btn-signin').disabled = true;
     try {
       backend = b;
-      me = await backend.signIn(clientId);
+      me = await backend.signIn(name);
       $('login').hidden = true;
       $('app').hidden = false;
-      $('me-name').textContent = me.name || displayName(me.email);
-      $('me-email').textContent = me.email;
-      avatar($('me-avatar'), me.email);
+      $('me-name').textContent = me.name;
+      avatar($('me-avatar'), me.name, me.id);
       await refreshConvs();
-      convTimer = setInterval(refreshConvs, POLL_MS * 4);
-      if (b === DemoBackend) toast('Demo mode: nothing is saved, and your friend replies automatically.');
+      convTimer = setInterval(refreshConvs, 5000);
+      if (b === DemoBackend) toast('Demo mode: nothing is sent or saved, and Mai replies automatically.');
+      if (pendingInvite && b !== DemoBackend) {
+        const inv = pendingInvite; pendingInvite = null;
+        await join(inv.code, inv.name);
+      }
     } catch (e) {
       $('login-error').textContent = e.message;
       $('login-error').hidden = false;
+      $('login').hidden = false;
+      $('app').hidden = true;
     } finally {
       $('btn-signin').disabled = false;
     }
   }
 
-  $('btn-signin').onclick = () => {
-    const clientId = (cfg.clientId || $('client-id').value).trim();
-    if (!clientId) {
-      $('client-setup').hidden = false;
-      $('login-error').textContent = 'Paste your Google OAuth Client ID first (see SETUP.md).';
-      $('login-error').hidden = false;
-      return;
-    }
-    store.set('pigeon.clientId', clientId);
-    start(DriveBackend, clientId);
+  $('login-form').onsubmit = (e) => {
+    e.preventDefault();
+    const name = $('my-name').value.trim();
+    if (name) start(NetBackend, name);
   };
-  $('btn-demo').onclick = () => start(DemoBackend);
-
-  $('btn-signout').onclick = () => {
-    backend.signOut();
-    clearInterval(pollTimer); clearInterval(convTimer);
-    current = null; convs = [];
-    $('conv-list').innerHTML = '';
-    closeChat();
-    showLogin();
-  };
+  $('btn-demo').onclick = () => start(DemoBackend, $('my-name').value.trim() || 'You');
 
   // ---------- conversation list ----------
   async function refreshConvs() {
@@ -116,12 +105,12 @@
       li.className = current?.id === c.id ? 'active' : '';
       const av = document.createElement('div');
       av.className = 'avatar';
-      avatar(av, c.peerEmail);
+      avatar(av, c.name, c.id);
       const info = document.createElement('div');
       info.className = 'info';
       info.innerHTML = '<div class="name"></div><div class="muted small"></div>';
-      info.firstChild.textContent = displayName(c.peerEmail);
-      info.lastChild.textContent = c.peerEmail;
+      info.firstChild.textContent = c.name;
+      info.lastChild.textContent = c.updated ? 'Last message ' + fmtTime(c.updated) : 'No messages yet';
       li.append(av, info);
       li.onclick = () => openChat(c);
       ul.append(li);
@@ -136,8 +125,8 @@
     $('messages').innerHTML = '';
     $('chat-empty').hidden = true;
     $('chat-view').hidden = false;
-    $('peer-name').textContent = displayName(c.peerEmail);
-    avatar($('peer-avatar'), c.peerEmail);
+    $('peer-name').textContent = c.name;
+    avatar($('peer-avatar'), c.name, c.id);
     document.body.classList.add('in-chat');
     renderConvs();
     clearInterval(pollTimer);
@@ -160,30 +149,39 @@
     if (!conv) return;
     try {
       const list = await backend.listMessages(conv.id, lastTime);
-      if (conv !== current) return; // user switched chats meanwhile
+      if (conv !== current) return; // switched chats meanwhile
       list.forEach(addMessage);
     } catch (e) { toast(e.message, true); }
   }
 
   function addMessage(m) {
-    if (shown.has(m.id)) return;
+    if (!m || shown.has(m.id)) return;
     shown.add(m.id);
     if (!lastTime || m.time > lastTime) lastTime = m.time;
 
     const box = $('messages');
     const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+    const mine = m.from === me.id;
 
     const row = document.createElement('div');
-    row.className = 'msg ' + (m.from === me.email ? 'mine' : 'theirs');
+    row.className = 'msg ' + (mine ? 'mine' : 'theirs');
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
+    if (!mine) {
+      const who = document.createElement('div');
+      who.className = 'who';
+      who.textContent = m.fromName;
+      let h = 0; for (const ch of m.from) h = (h * 31 + ch.charCodeAt(0)) % 360;
+      who.style.color = `hsl(${h} 55% 42%)`;
+      bubble.append(who);
+    }
     if (m.kind === 'photo') {
       const img = document.createElement('img');
       img.alt = 'Photo';
       img.className = 'loading';
       backend.photoUrl(m.id).then((url) => { img.src = url; img.className = ''; })
         .catch(() => { img.alt = 'Photo could not be loaded'; });
-      img.onload = () => { if (nearBottom) box.scrollTop = box.scrollHeight; };
+      img.onload = () => { if (nearBottom || mine) box.scrollTop = box.scrollHeight; };
       img.onclick = () => img.src && window.open(img.src, '_blank');
       bubble.append(img);
     } else {
@@ -198,11 +196,11 @@
     bubble.append(t);
     row.append(bubble);
 
-    // keep order by time (in case of slight clock differences between users)
-    const after = [...box.children].find((el) => el.dataset.time > m.time);
+    // keep order by time (messages can arrive out of order)
     row.dataset.time = m.time;
+    const after = [...box.children].find((el) => el.dataset.time > m.time);
     box.insertBefore(row, after || null);
-    if (nearBottom || m.from === me.email) box.scrollTop = box.scrollHeight;
+    if (nearBottom || mine) box.scrollTop = box.scrollHeight;
   }
 
   $('composer').onsubmit = async (e) => {
@@ -223,41 +221,91 @@
     const file = e.target.files[0];
     e.target.value = '';
     if (!file || !current) return;
-    if (file.size > 20 * 1024 * 1024) return toast('Photo is too big (20 MB max).', true);
-    toast('Uploading photo…');
+    toast('Sending photo…');
     try {
       addMessage(await backend.sendPhoto(current.id, file));
       $('toast').hidden = true;
     } catch (err) { toast('Photo not sent: ' + err.message, true); }
   };
 
-  // ---------- new chat ----------
-  $('btn-new').onclick = () => { $('new-email').value = ''; $('new-dialog').showModal(); };
-  $('new-dialog').onclose = async () => {
-    if ($('new-dialog').returnValue !== 'ok') return;
-    const email = $('new-email').value.trim();
-    if (!email) return;
-    if (email.toLowerCase() === me.email) return toast("That's your own address.", true);
+  // ---------- new / join chat ----------
+  let tab = 'start';
+  function setTab(t) {
+    tab = t;
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === t));
+    document.querySelectorAll('[data-pane]').forEach((p) => (p.hidden = p.dataset.pane !== t));
+    $('new-ok').textContent = t === 'start' ? 'Start chat' : 'Join chat';
+  }
+  document.querySelectorAll('.tab').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+
+  $('btn-new').onclick = () => {
+    $('new-name').value = ''; $('join-code').value = ''; $('join-name').value = '';
+    setTab('start');
+    $('new-dialog').showModal();
+  };
+
+  async function join(code, name) {
     try {
-      toast('Creating chat folder in Google Drive…');
-      const c = await backend.createConversation(email);
+      toast('Joining chat…');
+      const c = await backend.joinConversation(code, name);
+      $('toast').hidden = true;
       await refreshConvs();
       openChat(convs.find((x) => x.id === c.id) || c);
+    } catch (err) { toast(err.message, true); }
+  }
+
+  $('new-dialog').onclose = async () => {
+    if ($('new-dialog').returnValue !== 'ok') return;
+    if (tab === 'join') return join($('join-code').value, $('join-name').value.trim());
+    try {
+      const c = await backend.createConversation($('new-name').value.trim() || 'Family');
+      await refreshConvs();
+      await openChat(convs.find((x) => x.id === c.id) || c);
+      showInvite();
     } catch (err) { toast('Could not start chat: ' + err.message, true); }
   };
 
-  // On load: demo link (index.html?demo), coming back from Google sign-in,
-  // or an earlier sign-in that is still valid.
-  if (new URLSearchParams(location.search).has('demo')) {
-    start(DemoBackend);
-  } else {
-    const result = DriveBackend.checkRedirect();
-    const clientId = cfg.clientId || store.get('pigeon.clientId');
-    showLogin();
-    if (result === 'signed-in' && clientId) start(DriveBackend, clientId);
-    else if (result && result !== 'signed-in') {
-      $('login-error').textContent = result;
-      $('login-error').hidden = false;
-    }
+  // ---------- invite ----------
+  function inviteText() {
+    const appUrl = cfg.appUrl || (location.origin + location.pathname);
+    const link = `${appUrl}#join=${encodeURIComponent(current.code)}&name=${encodeURIComponent(current.name)}`;
+    return `Join my Pigeon Chat "${current.name}".\n\n` +
+      `1. Get the app: ${cfg.apkUrl || appUrl}\n` +
+      `2. Open it, tap ＋, choose "Join with code" and type:\n${current.code}\n\n` +
+      `Or open this link: ${link}`;
   }
+
+  function showInvite() {
+    if (!current) return;
+    $('invite-code').textContent = current.code;
+    $('invite-dialog').showModal();
+  }
+  $('btn-invite').onclick = showInvite;
+
+  $('btn-share').onclick = async () => {
+    const text = inviteText();
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Pigeon Chat invite', text }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(text); toast('Invite copied. Paste it in a message to your family.'); }
+    catch { toast('Could not share. Copy the code instead.', true); }
+  };
+  $('btn-copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(current.code); toast('Code copied.'); }
+    catch { toast('Could not copy. Please write the code down.', true); }
+  };
+  $('btn-leave').onclick = async () => {
+    if (!current) return;
+    const id = current.id;
+    $('invite-dialog').close();
+    await backend.leaveConversation(id);
+    closeChat();
+    await refreshConvs();
+    toast('You left the chat. You can join again with the code.');
+  };
+
+  // ---------- on load ----------
+  if (new URLSearchParams(location.search).has('demo')) start(DemoBackend, 'You');
+  else if (NetBackend.savedName()) start(NetBackend, NetBackend.savedName());
+  else showLogin();
 })();
